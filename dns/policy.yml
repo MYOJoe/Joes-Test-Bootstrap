@@ -1,0 +1,14 @@
+---
+Statement:
+  - Effect: Deny
+    Action: "Update:*"
+    Principal: "*"
+    Resource: "*"
+    Condition:
+      StringEquals:
+        ResourceType:
+          - "AWS::Route53::HostedZone"
+  - Effect: Allow
+    Action: "Update:*"
+    Principal: "*"
+    Resource: "*"

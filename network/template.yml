@@ -1,0 +1,368 @@
+---
+Description: Network for Environment
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  Environment:
+    Description: Name of the environment being deployed
+    Type: String
+    AllowedValues:
+      - dev
+      - prod
+
+  AzCount:
+    Description: Number of Availability Zones to deploy
+    Type: String
+    AllowedValues: ["2", "3"]
+
+  FlowLogRetention:
+    Description: Retention Period (in days) of Flow Logs
+    Type: Number
+    Default: 365
+
+  # CIDR inputs are limited to between /16-/28 as those are the AWS limits
+  VpcCidr:
+    Description: CIDR range for whole VPC. e.g. 172.16.0.0/18
+    Type: String
+    AllowedPattern: ((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/((1[6-9])|(2[0-8]))
+
+  RegionCidr:
+    Description: CIDR range for the AWS Region. e.g. 172.16.0.0/16
+    Type: String
+    Default: ""
+
+  PublicNetworkCidr:
+    Type: String
+    AllowedPattern: ((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/((1[6-9])|(2[0-8]))
+    Description: CIDR block of the Private network
+
+  PublicSubnetCidrs:
+    Type: String
+    AllowedPattern: '^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/(?:2[0-8]|1[6-9])(?:,(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/(?:2[0-8]|1[6-9]))*$'
+    Description: CIDR blocks of the Public subnets in each AZ in this VPC (separated by commas)
+
+  PrivateNetworkCidr:
+    Type: String
+    AllowedPattern: ((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/((1[6-9])|(2[0-8]))
+    Description: CIDR block of the Private network
+
+  PrivateSubnetCidrs:
+    Type: String
+    AllowedPattern: '^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/(?:2[0-8]|1[6-9])(?:,(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/(?:2[0-8]|1[6-9]))*$'
+    Description: CIDR blocks of the Public subnets in each AZ in this VPC (separated by commas)
+
+  DataNetworkCidr:
+    Type: String
+    AllowedPattern: ((25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/((1[6-9])|(2[0-8]))
+    Description: CIDR block of the Private network
+
+  DataSubnetCidrs:
+    Type: String
+    AllowedPattern: '^(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/(?:2[0-8]|1[6-9])(?:,(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\/(?:2[0-8]|1[6-9]))*$'
+    Description: CIDR blocks of the Public subnets in each AZ in this VPC (separated by commas)
+
+Conditions:
+  Az3Enabled: !Equals [!Ref "AzCount", "3"]
+
+Resources:
+  #############################################################################
+  # VPC
+  #############################################################################
+
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: !Ref VpcCidr
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-vpc"
+
+  DHCPOptions:
+    Type: AWS::EC2::DHCPOptions
+    Properties:
+      DomainNameServers:
+        - AmazonProvidedDNS
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-dhcpoptions"
+
+  VPCDHCPOptionsAssociation:
+    Type: AWS::EC2::VPCDHCPOptionsAssociation
+    Properties:
+      VpcId:
+        Ref: VPC
+      DhcpOptionsId:
+        Ref: DHCPOptions
+
+  #############################################################################
+  # Subnets: DO NOT MODIFY
+  #############################################################################
+
+  # Public Subnets
+
+  PublicSubnetAz1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs ""
+      CidrBlock: !Select [0, !Split [",", !Ref "PublicSubnetCidrs"]]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-public-subnet-az1"
+
+  PublicSubnetAz2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs ""
+      CidrBlock: !Select [1, !Split [",", !Ref "PublicSubnetCidrs"]]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-public-subnet-az2"
+
+  PublicSubnetAz3:
+    Condition: Az3Enabled
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 2
+        - !GetAZs ""
+      CidrBlock: !Select [2, !Split [",", !Ref "PublicSubnetCidrs"]]
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-public-subnet-az3"
+
+  # Private Subnets
+
+  PrivateSubnetAz1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs ""
+      CidrBlock: !Select [0, !Split [",", !Ref "PrivateSubnetCidrs"]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-private-subnet-az1"
+
+  PrivateSubnetAz2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs ""
+      CidrBlock: !Select [1, !Split [",", !Ref "PrivateSubnetCidrs"]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-private-subnet-az2"
+
+  PrivateSubnetAz3:
+    Condition: Az3Enabled
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 2
+        - !GetAZs ""
+      CidrBlock: !Select [2, !Split [",", !Ref "PrivateSubnetCidrs"]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-private-subnet-az3"
+
+  # Data Subnets
+
+  DataSubnetAz1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 0
+        - !GetAZs ""
+      CidrBlock: !Select [0, !Split [",", !Ref "DataSubnetCidrs"]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-data-subnet-az1"
+
+  DataSubnetAz2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 1
+        - !GetAZs ""
+      CidrBlock: !Select [1, !Split [",", !Ref "DataSubnetCidrs"]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-data-subnet-az2"
+
+  DataSubnetAz3:
+    Condition: Az3Enabled
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      AvailabilityZone: !Select
+        - 2
+        - !GetAZs ""
+      CidrBlock: !Select [2, !Split [",", !Ref "DataSubnetCidrs"]]
+      MapPublicIpOnLaunch: false
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-data-subnet-az3"
+
+  #############################################################################
+  # VPC Flow Logs
+  #############################################################################
+
+  FlowLogs:
+    Type: AWS::EC2::FlowLog
+    Properties:
+      DeliverLogsPermissionArn: !GetAtt FlowLogsServiceRole.Arn
+      LogGroupName: !Ref FlowLogsLogGroup
+      ResourceId: !Ref VPC
+      ResourceType: VPC
+      TrafficType: ALL
+
+  FlowLogsServiceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+          - Sid: AllowFlowLogs
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "vpc-flow-logs.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      RoleName: !Sub "${Environment}-${AWS::Region}-${VPC}-flow-logs"
+      Policies:
+        - PolicyName: CloudWatchLogging
+          PolicyDocument:
+            Version: 2012-10-17
+            Statement:
+              - Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                  - logs:DescribeLogGroups
+                  - logs:DescribeLogStreams
+                Effect: Allow
+                Resource: !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:${FlowLogsLogGroup}:*
+
+  FlowLogsLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/aws/vpc/${Environment}-${AWS::Region}-${VPC}-flow-logs"
+      RetentionInDays: !Ref FlowLogRetention
+
+Outputs:
+  VpcId:
+    Description: A reference to the VPC
+    Value: !Ref VPC
+    Export:
+      Name: !Sub "${AWS::StackName}::VpcId"
+
+  VpcCidr:
+    Description: A reference to the CIDR block of this VPC
+    Value: !GetAtt VPC.CidrBlock
+    Export:
+      Name: !Sub "${AWS::StackName}::VpcCidr"
+
+  AzCount:
+    Description: The number of availability zones
+    Value: !Ref AzCount
+    Export:
+      Name: !Sub "${AWS::StackName}::AzCount"
+
+  PublicNetworkCidr:
+    Description: The network CIDR used by the public subnets
+    Value: !Ref PublicNetworkCidr
+    Export:
+      Name: !Sub "${AWS::StackName}::PublicNetworkCidr"
+
+  PrivateNetworkCidr:
+    Description: The network CIDR used by the private subnets
+    Value: !Ref PrivateNetworkCidr
+    Export:
+      Name: !Sub "${AWS::StackName}::PrivateNetworkCidr"
+
+  DataNetworkCidr:
+    Description: The network CIDR used by the data subnets
+    Value: !Ref DataNetworkCidr
+    Export:
+      Name: !Sub "${AWS::StackName}::DataNetworkCidr"
+
+  PublicSubnetAz1:
+    Description: A reference to the public subnet in az1
+    Value: !Ref PublicSubnetAz1
+    Export:
+      Name: !Sub "${AWS::StackName}::PublicSubnetAz1"
+
+  PublicSubnetAz2:
+    Description: A reference to the public subnet in az2
+    Value: !Ref PublicSubnetAz2
+    Export:
+      Name: !Sub "${AWS::StackName}::PublicSubnetAz2"
+
+  PublicSubnetAz3:
+    Condition: Az3Enabled
+    Description: A reference to the public subnet in az3
+    Value: !Ref PublicSubnetAz3
+    Export:
+      Name: !Sub "${AWS::StackName}::PublicSubnetAz3"
+
+  PrivateSubnetAz1:
+    Description: A reference to the private subnet in az1
+    Value: !Ref PrivateSubnetAz1
+    Export:
+      Name: !Sub "${AWS::StackName}::PrivateSubnetAz1"
+
+  PrivateSubnetAz2:
+    Description: A reference to the private subnet in az2
+    Value: !Ref PrivateSubnetAz2
+    Export:
+      Name: !Sub "${AWS::StackName}::PrivateSubnetAz2"
+
+  PrivateSubnetAz3:
+    Condition: Az3Enabled
+    Description: A reference to the private subnet in az3
+    Value: !Ref PrivateSubnetAz3
+    Export:
+      Name: !Sub "${AWS::StackName}::PrivateSubnetAz3"
+
+  DataSubnetAz1:
+    Description: A reference to the data subnet in az1
+    Value: !Ref DataSubnetAz1
+    Export:
+      Name: !Sub "${AWS::StackName}::DataSubnetAz1"
+
+  DataSubnetAz2:
+    Description: A reference to the data subnet in az2
+    Value: !Ref DataSubnetAz2
+    Export:
+      Name: !Sub "${AWS::StackName}::DataSubnetAz2"
+
+  DataSubnetAz3:
+    Condition: Az3Enabled
+    Description: A reference to the data subnet in az3
+    Value: !Ref DataSubnetAz3
+    Export:
+      Name: !Sub "${AWS::StackName}::DataSubnetAz3"

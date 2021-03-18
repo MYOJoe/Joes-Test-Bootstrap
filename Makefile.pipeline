@@ -1,0 +1,19 @@
+SHELL := /bin/bash -e
+
+DEPLOY_TARGETS := deploy-iam-pipeline
+
+.PHONY: env-vars $(DEPLOY_TARGETS)
+
+deploy-iam-pipeline: env-vars
+	@echo "--- Deploy $(ENVIRONMENT)-iam-pipeline cloudformation stack"
+	@docker-compose run --rm stackup $(ENVIRONMENT)-iam-pipeline up \
+		--template iam/pipeline/template.yml \
+		--override Environment=$(ENVIRONMENT)
+
+env-vars:
+ifndef ENVIRONMENT
+	$(error ENVIRONMENT is undefined)
+endif
+ifndef AWS_DEFAULT_REGION
+	$(error AWS_DEFAULT_REGION is undefined)
+endif

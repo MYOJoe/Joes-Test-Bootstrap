@@ -1,0 +1,125 @@
+---
+Description: Enables ebs-encryptions
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  Environment:
+    Description: Name of the environment being deployed
+    Type: String
+    AllowedValues:
+      - dev
+      - prod
+
+Conditions:
+  IsProd: !Equals ["prod", !Ref Environment]
+
+Resources:
+
+  EnableEBSEncryption:
+    Condition: IsProd
+    Type: "Custom::EnableEBSEncrypt"
+    Properties:
+      ServiceToken: !GetAtt DefaultEbsEncryptionLambda.Arn
+      Region: !Ref AWS::Region
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-enable-ebs-encryption"
+
+  #############################################################################
+  # EBS Encryption Components
+  #############################################################################
+
+  DefaultEbsEncryptionLambda:
+    Condition: IsProd
+    Type: AWS::Lambda::Function
+    Properties:
+      Handler: index.handler
+      Runtime: python3.7
+      Timeout: 30
+      MemorySize: 128
+      Role: !GetAtt EBSEncryptUpdateFunctionRole.Arn
+      Environment:
+        Variables:
+          aws_region: !Ref AWS::Region
+      Code:
+        ZipFile: |
+          from __future__ import print_function
+          import boto3
+          import os
+          import cfnresponse
+
+          aws_region = os.environ['aws_region']
+          session = boto3.Session(region_name=aws_region)
+          ec2 = session.client('ec2')
+
+          def handler(event, context):
+              ec2_regions = [region['RegionName'] for region in ec2.describe_regions()['Regions']]
+              msg = event
+              conn = boto3.client('ec2', region_name=aws_region)
+              try:
+                if msg['RequestType'] in ['Create', 'Update']:
+                  for region in ec2_regions:
+                      if region == aws_region:
+                          print ("Checking AWS Region: " + region)
+                          status = conn.get_ebs_encryption_by_default()
+                          result = status["EbsEncryptionByDefault"]
+                          if result == True:
+                              print ("Activated, nothing to do")
+                              print ("===="*10)
+                              cfnresponse.send(msg, context, cfnresponse.SUCCESS, msg)
+                          else:
+                              print("Not activated, activation in progress")
+                              conn.enable_ebs_encryption_by_default()
+                              print ("===="*10)
+                              cfnresponse.send(msg, context, cfnresponse.SUCCESS, msg)
+                elif msg['RequestType'] == 'Delete':
+                  conn.disable_ebs_encryption_by_default()
+                  cfnresponse.send(msg, context, cfnresponse.SUCCESS, msg)
+              except:
+                cfnresponse.send(msg, context, cfnresponse.FAILED, msg)
+                raise
+
+  EBSEncryptUpdateFunctionRole:
+    Condition: IsProd
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+
+  EBSEncryptPolicy:
+    Condition: IsProd
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: "ebs-encrypt-policy"
+      Roles:
+        - !Ref EBSEncryptUpdateFunctionRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - "logs:CreateLogGroup"
+            Effect: "Allow"
+            Resource:
+              - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group
+              - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*
+          - Action:
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Effect: "Allow"
+            Resource:
+              - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*
+              - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/*:*
+          - Action:
+              - "ec2:GetEbsEncryptionByDefault"
+              - "ec2:EnableEbsEncryptionByDefault"
+              - "ec2:DisableEbsEncryptionByDefault"
+              - "ec2:DescribeRegions"
+            Effect: "Allow"
+            Resource: "*"

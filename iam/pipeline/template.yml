@@ -1,0 +1,319 @@
+---
+Description: Pipeline IAM Roles for Environment
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  Environment:
+    Description: Name of the environment being deployed
+    Type: String
+    AllowedValues:
+      - dev
+      - prod
+
+Resources:
+  #############################################################################
+  # IAM Roles
+  #############################################################################
+
+  PipelineRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "myob-pipeline-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "ec2.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      ManagedPolicyArns:
+        - !Ref PipelineRoleManagedPolicy
+
+  PipelineRoleManagedPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # cloudformation-management
+          - Effect: "Allow"
+            Action:
+              - "cloudformation:CreateStack"
+              - "cloudformation:CreateChangeSet"
+              - "cloudformation:DescribeChangeSet"
+              - "cloudformation:DeleteStack"
+              - "cloudformation:DescribeStackEvents"
+              - "cloudformation:DescribeStackResource"
+              - "cloudformation:DescribeStacks"
+              - "cloudformation:ExecuteChangeSet"
+              - "cloudformation:GetTemplateSummary"
+              - "cloudformation:SetStackPolicy"
+              - "cloudformation:UpdateStack"
+              - "cloudformation:ValidateTemplate"
+            Resource:
+              - "*"
+          # iam-management
+          - Effect: "Allow"
+            Action:
+              - "iam:AttachRolePolicy"
+              - "iam:CreateRole"
+              - "iam:CreateRolePolicy"
+              - "iam:CreatePolicy"
+              - "iam:CreatePolicyVersion"
+              - "iam:CreateInstanceProfile"
+              - "iam:DeleteRole"
+              - "iam:DeleteRolePolicy"
+              - "iam:DeletePolicy"
+              - "iam:DeleteInstanceProfile"
+              - "iam:DeletePolicyVersion"
+              - "iam:DetachRolePolicy"
+              - "iam:PutRolePolicy"
+              - "iam:AddRoleToInstanceProfile"
+              - "iam:RemoveRoleFromInstanceProfile"
+              - "iam:Get*"
+              - "iam:List*"
+            Resource:
+              - !Sub "arn:aws:iam::${AWS::AccountId}:*"
+          # packer
+          - Effect: "Allow"
+            Action:
+              - "ec2:AttachVolume"
+              - "ec2:AuthorizeSecurityGroupIngress"
+              - "ec2:CopyImage"
+              - "ec2:CreateImage"
+              - "ec2:CreateKeypair"
+              - "ec2:CreateSecurityGroup"
+              - "ec2:CreateSnapshot"
+              - "ec2:CreateTags"
+              - "ec2:CreateVolume"
+              - "ec2:*VpcEndpoint*"
+              - "ec2:DeleteKeypair"
+              - "ec2:DeleteSecurityGroup"
+              - "ec2:DeleteSnapshot"
+              - "ec2:DeleteVolume"
+              - "ec2:DeregisterImage"
+              - "ec2:DescribeImageAttribute"
+              - "ec2:DescribeImages"
+              - "ec2:DescribeInstances"
+              - "ec2:DescribeRegions"
+              - "ec2:DescribeSecurityGroups"
+              - "ec2:DescribeSnapshots"
+              - "ec2:DescribeSubnets"
+              - "ec2:DescribeTags"
+              - "ec2:DescribeVolumes"
+              - "ec2:DetachVolume"
+              - "ec2:GetPasswordData"
+              - "ec2:ModifyImageAttribute"
+              - "ec2:ModifyInstanceAttribute"
+              - "ec2:ModifySnapshotAttribute"
+              - "ec2:RegisterImage"
+              - "ec2:RunInstances"
+              - "ec2:StopInstances"
+              - "ec2:TerminateInstances"
+            Resource: "*"
+          # ec2-management
+          - Effect: "Allow"
+            Action:
+              - "autoscaling:*"
+              - "application-autoscaling:*"
+              - "ec2:AssignIpv6Addresses"
+              - "ec2:AssignPrivateIpAddresses"
+              - "ec2:AssociateAddress"
+              - "ec2:AttachNetworkInterface"
+              - "ec2:AttachVolume"
+              - "ec2:AuthorizeSecurityGroupEgress"
+              - "ec2:AuthorizeSecurityGroupIngress"
+              - "ec2:UpdateSecurityGroupRuleDescriptionsEgress"
+              - "ec2:UpdateSecurityGroupRuleDescriptionsIngress"
+              - "ec2:CancelSpotFleetRequests"
+              - "ec2:CancelSpotInstanceRequests"
+              - "ec2:CreateNetworkInterface"
+              - "ec2:CreatePlacementGroup"
+              - "ec2:CreateSecurityGroup"
+              - "ec2:CreateSnapshot"
+              - "ec2:CreateTags"
+              - "ec2:CreateVolume"
+              - "ec2:DeleteNetworkInterface"
+              - "ec2:DeletePlacementGroup"
+              - "ec2:DeleteSecurityGroup"
+              - "ec2:DeleteSnapshot"
+              - "ec2:DeleteTags"
+              - "ec2:DeleteVolume"
+              - "ec2:Describe*"
+              - "ec2:DetachNetworkInterface"
+              - "ec2:DetachVolume"
+              - "ec2:DisassociateAddress"
+              - "ec2:EnableVolumeIO"
+              - "ec2:ModifyInstanceAttribute"
+              - "ec2:ModifyInstancePlacement"
+              - "ec2:ModifyNetworkInterfaceAttribute"
+              - "ec2:ModifySnapshotAttribute"
+              - "ec2:ModifySpotFleetRequest"
+              - "ec2:ModifyVolumeAttribute"
+              - "ec2:MonitorInstances"
+              - "ec2:RebootInstances"
+              - "ec2:ReportInstanceStatus"
+              - "ec2:RequestSpotFleet"
+              - "ec2:RequestSpotInstances"
+              - "ec2:ResetInstanceAttribute"
+              - "ec2:ResetNetworkInterfaceAttribute"
+              - "ec2:ResetSnapshotAttribute"
+              - "ec2:RevokeSecurityGroupEgress"
+              - "ec2:RevokeSecurityGroupIngress"
+              - "ec2:RunInstances"
+              - "ec2:StartInstances"
+              - "ec2:StopInstances"
+              - "ec2:TerminateInstances"
+              - "ec2:UnassignIpv6Addresses"
+              - "ec2:UnassignPrivateIpAddresses"
+              - "ec2:UnmonitorInstances"
+              - "elasticloadbalancing:*"
+            Resource: "*"
+          # route53-records-management
+          - Effect: "Deny"
+            Action:
+              - "route53:AssociateVPCWithHostedZone"
+              - "route53:CreateHostedZone"
+              - "route53:DeleteHostedZone"
+              - "route53:DisassociateVPCFromHostedZone"
+              - "route53:UpdateHostedZoneComment"
+            Resource:
+              - "*"
+          - Effect: "Allow"
+            Action:
+              - "route53:*"
+            Resource:
+              - "*"
+          # serverless-management
+          - Effect: "Allow"
+            NotAction:
+              - "lambda:Invoke*"
+            Resource:
+              - "arn:aws:lambda:*"
+          - Effect: "Allow"
+            Action:
+              - "apigateway:*"
+            Resource:
+              - "*"
+          - Effect: "Allow"
+            Action:
+              - "iam:PassRole"
+            Resource:
+              - "*"
+          # monitoring-management
+          - Effect: "Allow"
+            Action:
+              - "cloudwatch:*"
+              - "events:*"
+              - "logs:*"
+            Resource:
+              - "*"
+          # container-management
+          - Effect: "Allow"
+            Action:
+              - "ecs:*"
+              - "ecr:*"
+            Resource:
+              - "*"
+          # database-management
+          - Effect: "Allow"
+            Action:
+              - "dynamodb:*"
+              - "rds:*"
+              - "elasticache:*"
+              - "redshift:*"
+              - "sdb:*"
+              - "dms:*"
+            Resource:
+              - "*"
+          # messaging-management
+          - Effect: "Allow"
+            Action:
+              - "sqs:*"
+              - "ses:*"
+              - "sns:*"
+            Resource:
+              - "*"
+          # encryption-management
+          - Effect: "Allow"
+            Action:
+              - "kms:Encrypt"
+              - "kms:Decrypt"
+              - "kms:ReEncrypt*"
+              - "kms:GenerateDataKey*"
+              - "kms:DescribeKey"
+            Resource:
+              - "*"
+          - Effect: "Allow"
+            Action:
+              - "kms:CreateGrant"
+              - "kms:ListGrants"
+              - "kms:RevokeGrant"
+            Resource:
+              - "*"
+            Condition:
+              Bool:
+                kms:GrantIsForAWSResource: true
+          # netsec-management
+          - Effect: "Allow"
+            Action:
+              - "acm:*"
+              - "waf:*"
+            Resource:
+              - "*"
+          # storage-management
+          - Effect: "Allow"
+            Action:
+              - "s3:*"
+            Resource:
+              - "*"
+          - Effect: "Allow"
+            Action:
+              - "s3:CreateBucket"
+              - "s3:DeleteBucket"
+            NotResource:
+              - "arn:aws:s3:::myob-*"
+          - Effect: "Deny"
+            Action:
+              - "s3:*"
+            Resource:
+              - "*"
+            Condition:
+              Bool:
+                aws:SecureTransport: false
+          # analytics-management
+          - Effect: "Allow"
+            Action:
+              - "elasticmapreduce:*"
+              - "es:*"
+              - "kinesisanalytics:*"
+              - "firehose:*"
+              - "kinesis:*"
+              - "datapipeline:*"
+            Resource:
+              - "*"
+          # pipeline-sns-subscriptions
+          - Effect: Allow
+            Action:
+              - "sns:ListSubscriptions"
+              - "sns:Unsubscribe"
+            Resource: "*"
+          # pipeline-trigger-sg-update
+          - Effect: Allow
+            Action:
+              - "lambda:InvokeFunction"
+            Resource: !Sub "arn:aws:lambda:${AWS::Region}:${AWS::AccountId}:function:${Environment}-securitygroups-*"
+          # service-linked-roles
+          - Effect: Allow
+            Action:
+              - "iam:CreateServiceLinkedRole"
+              - "iam:UpdateRoleDescription"
+              - "iam:DeleteServiceLinkedRole"
+              - "iam:GetServiceLinkedRoleDeletionStatus"
+            Resource: "arn:aws:iam::*:role/aws-service-role/*"
+          # cloudfront-management
+          - Effect: "Allow"
+            Action:
+              - "cloudfront:*"
+            Resource: "*"

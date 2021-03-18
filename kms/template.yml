@@ -1,0 +1,35 @@
+---
+AWSTemplateFormatVersion: 2010-09-09
+Description: KMS Encryption Key
+
+Parameters:
+
+  Environment:
+    Description: Name of the environment being deployed
+    Type: String
+    AllowedValues:
+      - prod
+      - dev
+
+Resources:
+
+  ShushEncryptKey:
+    DeletionPolicy: Retain
+    Type: AWS::KMS::Key
+    Properties:
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS:
+                - !Sub ${AWS::AccountId}
+            Action: 'kms:*'
+            Resource: '*'
+
+  ShushEncryptKeyAlias:
+    DeletionPolicy: Retain
+    Type: 'AWS::KMS::Alias'
+    Properties:
+      AliasName: !Sub 'alias/shush'
+      TargetKeyId: !Ref ShushEncryptKey

@@ -1,0 +1,462 @@
+---
+Description: Routing for Environment
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  Environment:
+    Description: Name of the environment being deployed
+    Type: String
+    AllowedValues:
+      - dev
+      - prod
+
+  AzCount:
+    Description: Number of Availability Zones to deploy
+    Type: String
+    AllowedValues: ["2", "3"]
+
+  NetworkStack:
+    Type: String
+    Description: Name of the network stack in this environment
+    AllowedPattern: "[A-Za-z][A-Za-z0-9-]{0,127}"
+
+Conditions:
+  Az3Enabled: !Equals [!Ref "AzCount", "3"]
+
+Resources:
+  #############################################################################
+  # Routes: DO NOT MODIFY
+  #############################################################################
+
+  # Public Routes
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStack}::VpcId"
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-public"
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: InternetGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  PublicSubnetRouteTableAssociationAz1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Fn::ImportValue: !Sub "${NetworkStack}::PublicSubnetAz1"
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetRouteTableAssociationAz2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Fn::ImportValue: !Sub "${NetworkStack}::PublicSubnetAz2"
+      RouteTableId: !Ref PublicRouteTable
+
+  PublicSubnetRouteTableAssociationAz3:
+    Condition: Az3Enabled
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Fn::ImportValue: !Sub "${NetworkStack}::PublicSubnetAz3"
+      RouteTableId: !Ref PublicRouteTable
+
+  # Private Routes
+
+  PrivateRouteTableAz1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStack}::VpcId"
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-privateroute-az1"
+
+  PrivateRouteTableAz2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStack}::VpcId"
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-privateroute-az2"
+
+  PrivateRouteTableAz3:
+    Condition: Az3Enabled
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStack}::VpcId"
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-privateroute-az3"
+
+  PrivateRouteAz1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableAz1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGatewayAz1
+
+  PrivateRouteAz2:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableAz2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGatewayAz2
+
+  PrivateRouteAz3:
+    Condition: Az3Enabled
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref PrivateRouteTableAz3
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGatewayAz3
+
+  PrivateSubnetRouteTableAssociationAz1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Fn::ImportValue: !Sub "${NetworkStack}::PrivateSubnetAz1"
+      RouteTableId: !Ref PrivateRouteTableAz1
+
+  PrivateSubnetRouteTableAssociationAz2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Fn::ImportValue: !Sub "${NetworkStack}::PrivateSubnetAz2"
+      RouteTableId: !Ref PrivateRouteTableAz2
+
+  PrivateSubnetRouteTableAssociationAz3:
+    Condition: Az3Enabled
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Fn::ImportValue: !Sub "${NetworkStack}::PrivateSubnetAz3"
+      RouteTableId: !Ref PrivateRouteTableAz3
+
+  # Data Routes
+
+  DataRouteTableAz1:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStack}::VpcId"
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-dataroutes-az1"
+
+  DataRouteTableAz2:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStack}::VpcId"
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-dataroutes-az2"
+
+  DataRouteTableAz3:
+    Condition: Az3Enabled
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStack}::VpcId"
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-dataroutes-az3"
+
+  DataRouteAz1:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref DataRouteTableAz1
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGatewayAz1
+
+  DataRouteAz2:
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref DataRouteTableAz2
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGatewayAz2
+
+  DataRouteAz3:
+    Condition: Az3Enabled
+    Type: AWS::EC2::Route
+    Properties:
+      RouteTableId: !Ref DataRouteTableAz3
+      DestinationCidrBlock: 0.0.0.0/0
+      NatGatewayId: !Ref NATGatewayAz3
+
+  DataSubnetRouteTableAssociationAz1:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Fn::ImportValue: !Sub "${NetworkStack}::DataSubnetAz1"
+      RouteTableId: !Ref DataRouteTableAz1
+
+  DataSubnetRouteTableAssociationAz2:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Fn::ImportValue: !Sub "${NetworkStack}::DataSubnetAz2"
+      RouteTableId: !Ref DataRouteTableAz2
+
+  DataSubnetRouteTableAssociationAz3:
+    Condition: Az3Enabled
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId:
+        Fn::ImportValue: !Sub "${NetworkStack}::DataSubnetAz3"
+      RouteTableId: !Ref DataRouteTableAz3
+
+  #############################################################################
+  # Internet Gateway: DO NOT MODIFY
+  #############################################################################
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    Properties:
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-internet-gateway"
+
+  InternetGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      InternetGatewayId: !Ref InternetGateway
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStack}::VpcId"
+
+  #############################################################################
+  # Nat Gateways: DO NOT MODIFY
+  #############################################################################
+
+  NatGatewayEipAz1:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NatGatewayEipAz2:
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NatGatewayEipAz3:
+    Condition: Az3Enabled
+    Type: AWS::EC2::EIP
+    Properties:
+      Domain: vpc
+
+  NATGatewayAz1:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGatewayEipAz1.AllocationId
+      SubnetId:
+        Fn::ImportValue: !Sub "${NetworkStack}::PublicSubnetAz1"
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-natgw-az1"
+
+  NATGatewayAz2:
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGatewayEipAz2.AllocationId
+      SubnetId:
+        Fn::ImportValue: !Sub "${NetworkStack}::PublicSubnetAz2"
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-natgw-az2"
+
+  NATGatewayAz3:
+    Condition: Az3Enabled
+    Type: AWS::EC2::NatGateway
+    Properties:
+      AllocationId: !GetAtt NatGatewayEipAz3.AllocationId
+      SubnetId:
+        Fn::ImportValue: !Sub "${NetworkStack}::PublicSubnetAz3"
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-natgw-az3"
+
+  #############################################################################
+  # VPC Endpoints
+  #############################################################################
+
+  VPCEndpointSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupName: !Sub "${Environment}-vpce-sg"
+      GroupDescription: Security Group Attached to VPC Interface Endpoints
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStack}::VpcId"
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          CidrIp:
+            Fn::ImportValue: !Sub "${NetworkStack}::VpcCidr"
+          Description: HTTPS Access to VPCE
+      SecurityGroupEgress:
+        - IpProtocol: -1
+          CidrIp: 0.0.0.0/0
+          Description: Allow all traffic out
+
+  S3Endpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStack}::VpcId"
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.s3
+      RouteTableIds:
+        - !Ref PublicRouteTable
+        - !Ref PrivateRouteTableAz1
+        - !Ref PrivateRouteTableAz2
+        - !If
+          - Az3Enabled
+          - !Ref PrivateRouteTableAz3
+          - !Ref AWS::NoValue
+
+  LogsEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStack}::VpcId"
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.logs
+      PrivateDnsEnabled: true
+      VpcEndpointType: Interface
+      SubnetIds:
+        - Fn::ImportValue: !Sub "${NetworkStack}::PrivateSubnetAz1"
+        - Fn::ImportValue: !Sub "${NetworkStack}::PrivateSubnetAz2"
+        - !If
+          - Az3Enabled
+          - Fn::ImportValue: !Sub "${NetworkStack}::PrivateSubnetAz3"
+          - !Ref AWS::NoValue
+      SecurityGroupIds:
+        - !Ref VPCEndpointSecurityGroup
+
+  SSMEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStack}::VpcId"
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssm
+      PrivateDnsEnabled: true
+      VpcEndpointType: Interface
+      SubnetIds:
+        - Fn::ImportValue: !Sub "${NetworkStack}::PrivateSubnetAz1"
+        - Fn::ImportValue: !Sub "${NetworkStack}::PrivateSubnetAz2"
+        - !If
+          - Az3Enabled
+          - Fn::ImportValue: !Sub "${NetworkStack}::PrivateSubnetAz3"
+          - !Ref AWS::NoValue
+      SecurityGroupIds:
+        - !Ref VPCEndpointSecurityGroup
+
+  SSMMessagesEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStack}::VpcId"
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ssmmessages
+      PrivateDnsEnabled: true
+      VpcEndpointType: Interface
+      SubnetIds:
+        - Fn::ImportValue: !Sub "${NetworkStack}::PrivateSubnetAz1"
+        - Fn::ImportValue: !Sub "${NetworkStack}::PrivateSubnetAz2"
+        - !If
+          - Az3Enabled
+          - Fn::ImportValue: !Sub "${NetworkStack}::PrivateSubnetAz3"
+          - !Ref AWS::NoValue
+      SecurityGroupIds:
+        - !Ref VPCEndpointSecurityGroup
+
+  EC2MessagesEndpoint:
+    Type: AWS::EC2::VPCEndpoint
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStack}::VpcId"
+      ServiceName: !Sub com.amazonaws.${AWS::Region}.ec2messages
+      PrivateDnsEnabled: true
+      VpcEndpointType: Interface
+      SubnetIds:
+        - Fn::ImportValue: !Sub "${NetworkStack}::PrivateSubnetAz1"
+        - Fn::ImportValue: !Sub "${NetworkStack}::PrivateSubnetAz2"
+        - !If
+          - Az3Enabled
+          - Fn::ImportValue: !Sub "${NetworkStack}::PrivateSubnetAz3"
+          - !Ref AWS::NoValue
+      SecurityGroupIds:
+        - !Ref VPCEndpointSecurityGroup
+
+Outputs:
+  PublicRouteTable:
+    Description: A reference to the public route table
+    Value: !Ref PublicRouteTable
+    Export:
+      Name: !Sub "${AWS::StackName}::PublicRouteTable"
+
+  PrivateRouteTableAz1:
+    Description: A reference to the route table for private subnet in az1
+    Value: !Ref PrivateRouteTableAz1
+    Export:
+      Name: !Sub "${AWS::StackName}::PrivateRouteTableAz1"
+
+  PrivateRouteTableAz2:
+    Description: A reference to the route table for private subnet in az2
+    Value: !Ref PrivateRouteTableAz2
+    Export:
+      Name: !Sub "${AWS::StackName}::PrivateRouteTableAz2"
+
+  PrivateRouteTableAz3:
+    Condition: Az3Enabled
+    Description: A reference to the route table for private subnet in az3
+    Value: !Ref PrivateRouteTableAz3
+    Export:
+      Name: !Sub "${AWS::StackName}::PrivateRouteTableAz3"
+
+  DataRouteTableAz1:
+    Description: A reference to the route table for data subnet in az1
+    Value: !Ref DataRouteTableAz1
+    Export:
+      Name: !Sub "${AWS::StackName}::DataRouteTableAz1"
+
+  DataRouteTableAz2:
+    Description: A reference to the route table for data subnet in az2
+    Value: !Ref DataRouteTableAz2
+    Export:
+      Name: !Sub "${AWS::StackName}::DataRouteTableAz2"
+
+  DataRouteTableAz3:
+    Condition: Az3Enabled
+    Description: A reference to the route table for data subnet in az3
+    Value: !Ref DataRouteTableAz3
+    Export:
+      Name: !Sub "${AWS::StackName}::DataRouteTableAz3"
+
+  PublicIps:
+    Description: A list of the NAT gateway EIPs
+    Value: !Join
+      - ","
+      -
+        - !Ref NatGatewayEipAz1
+        - !Ref NatGatewayEipAz2
+        - !If
+          - Az3Enabled
+          - !Ref NatGatewayEipAz3
+          - !Ref AWS::NoValue
+    Export:
+      Name: !Sub "${AWS::StackName}::PublicIps"
+
+  InternetGateway:
+    Description: A reference to the internet gateway
+    Value: !Ref InternetGateway
+    Export:
+      Name: !Sub "${AWS::StackName}::InternetGateway"

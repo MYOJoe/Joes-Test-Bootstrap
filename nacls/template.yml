@@ -1,0 +1,290 @@
+---
+Description: NACLs for Environment
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  Environment:
+    Description: Name of the environment being deployed
+    Type: String
+    AllowedValues:
+      - dev
+      - prod
+
+  AzCount:
+    Description: Number of Availability Zones to deploy
+    Type: String
+    AllowedValues: ["2", "3"]
+
+  NetworkStack:
+    Type: String
+    Description: Name of the network stack in this environment
+    AllowedPattern: "[A-Za-z][A-Za-z0-9-]{0,127}"
+
+Conditions:
+  Az3Enabled: !Equals [!Ref "AzCount", "3"]
+
+Resources:
+  ##############################################################################
+  # NACLs
+  ##############################################################################
+
+  PublicNacl:
+    Type: "AWS::EC2::NetworkAcl"
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStack}::VpcId"
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-public-nacl"
+
+  PrivateNacl:
+    Type: "AWS::EC2::NetworkAcl"
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStack}::VpcId"
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-private-nacl"
+
+  DataNacl:
+    Type: "AWS::EC2::NetworkAcl"
+    Properties:
+      VpcId:
+        Fn::ImportValue: !Sub "${NetworkStack}::VpcId"
+      Tags:
+        - Key: Name
+          Value: !Sub "${Environment}-data-nacl"
+
+  ##############################################################################
+  # NACL Subnet Associations: Public
+  ##############################################################################
+
+  SubnetNaclAssociationPublicAz1:
+    Type: "AWS::EC2::SubnetNetworkAclAssociation"
+    Properties:
+      SubnetId:
+        Fn::ImportValue: !Sub "${NetworkStack}::PublicSubnetAz1"
+      NetworkAclId: !Ref PublicNacl
+
+  SubnetNaclAssociationPublicAz2:
+    Type: "AWS::EC2::SubnetNetworkAclAssociation"
+    Properties:
+      SubnetId:
+        Fn::ImportValue: !Sub "${NetworkStack}::PublicSubnetAz2"
+      NetworkAclId: !Ref PublicNacl
+
+  SubnetNaclAssociationPublicAz3:
+    Condition: Az3Enabled
+    Type: "AWS::EC2::SubnetNetworkAclAssociation"
+    Properties:
+      SubnetId:
+        Fn::ImportValue: !Sub "${NetworkStack}::PublicSubnetAz3"
+      NetworkAclId: !Ref PublicNacl
+
+  ##############################################################################
+  # NACL Subnet Associations: Private
+  ##############################################################################
+
+  SubnetNaclAssociationPrivateAz1:
+    Type: "AWS::EC2::SubnetNetworkAclAssociation"
+    Properties:
+      SubnetId:
+        Fn::ImportValue: !Sub "${NetworkStack}::PrivateSubnetAz1"
+      NetworkAclId: !Ref PrivateNacl
+
+  SubnetNaclAssociationPrivateAz2:
+    Type: "AWS::EC2::SubnetNetworkAclAssociation"
+    Properties:
+      SubnetId:
+        Fn::ImportValue: !Sub "${NetworkStack}::PrivateSubnetAz2"
+      NetworkAclId: !Ref PrivateNacl
+
+  SubnetNaclAssociationPrivateAz3:
+    Condition: Az3Enabled
+    Type: "AWS::EC2::SubnetNetworkAclAssociation"
+    Properties:
+      SubnetId:
+        Fn::ImportValue: !Sub "${NetworkStack}::PrivateSubnetAz3"
+      NetworkAclId: !Ref PrivateNacl
+
+  ##############################################################################
+  # NACL Subnet Associations: Data
+  ##############################################################################
+
+  SubnetNaclAssociationDataAz1:
+    Type: "AWS::EC2::SubnetNetworkAclAssociation"
+    Properties:
+      SubnetId:
+        Fn::ImportValue: !Sub "${NetworkStack}::DataSubnetAz1"
+      NetworkAclId: !Ref DataNacl
+
+  SubnetNaclAssociationDataAz2:
+    Type: "AWS::EC2::SubnetNetworkAclAssociation"
+    Properties:
+      SubnetId:
+        Fn::ImportValue: !Sub "${NetworkStack}::DataSubnetAz2"
+      NetworkAclId: !Ref DataNacl
+
+  SubnetNaclAssociationDataAz3:
+    Condition: Az3Enabled
+    Type: "AWS::EC2::SubnetNetworkAclAssociation"
+    Properties:
+      SubnetId:
+        Fn::ImportValue: !Sub "${NetworkStack}::DataSubnetAz3"
+      NetworkAclId: !Ref DataNacl
+
+  ##############################################################################
+  # NACL List: Public
+  ##############################################################################
+
+  PublicNaclIn1000:
+    # Deny traffic from the data subnets
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      CidrBlock:
+        Fn::ImportValue: !Sub "${NetworkStack}::DataNetworkCidr"
+      Egress: false
+      NetworkAclId: !Ref PublicNacl
+      PortRange:
+        From: -1
+        To: -1
+      Protocol: -1
+      RuleAction: "deny"
+      RuleNumber: 1000
+
+  PublicNaclOut1000:
+    # Deny traffic to the data subnets
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      CidrBlock:
+        Fn::ImportValue: !Sub "${NetworkStack}::DataNetworkCidr"
+      Egress: true
+      NetworkAclId: !Ref PublicNacl
+      PortRange:
+        From: -1
+        To: -1
+      Protocol: -1
+      RuleAction: "deny"
+      RuleNumber: 1000
+
+  PublicNaclIn3000:
+    # Allow traffic from anywhere
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      CidrBlock: "0.0.0.0/0"
+      Egress: false
+      NetworkAclId: !Ref PublicNacl
+      PortRange:
+        From: -1
+        To: -1
+      Protocol: -1
+      RuleAction: "allow"
+      RuleNumber: 3000
+
+  PublicNaclOut3000:
+    # Allow traffic to anywhere
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      CidrBlock: "0.0.0.0/0"
+      Egress: true
+      NetworkAclId: !Ref PublicNacl
+      PortRange:
+        From: -1
+        To: -1
+      Protocol: -1
+      RuleAction: "allow"
+      RuleNumber: 3000
+
+  ##############################################################################
+  # NACL List: Private
+  ##############################################################################
+
+  PrivateNaclIn3000:
+    # Allow traffic from anywhere
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      CidrBlock: "0.0.0.0/0"
+      Egress: false
+      NetworkAclId: !Ref PrivateNacl
+      PortRange:
+        From: -1
+        To: -1
+      Protocol: -1
+      RuleAction: "allow"
+      RuleNumber: 3000
+
+  PrivateNaclOut3000:
+    # Allow traffic to anywhere
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      CidrBlock: "0.0.0.0/0"
+      Egress: true
+      NetworkAclId: !Ref PrivateNacl
+      PortRange:
+        From: -1
+        To: -1
+      Protocol: -1
+      RuleAction: "allow"
+      RuleNumber: 3000
+
+  ##############################################################################
+  # NACL List: Data
+  ##############################################################################
+
+  DataNaclIn1000:
+    # Deny traffic from the Public subnets
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      CidrBlock:
+        Fn::ImportValue: !Sub "${NetworkStack}::PublicNetworkCidr"
+      Egress: false
+      NetworkAclId: !Ref DataNacl
+      PortRange:
+        From: -1
+        To: -1
+      Protocol: -1
+      RuleAction: "deny"
+      RuleNumber: 1000
+
+  DataNaclOut1000:
+    # Deny traffic to the Public subnets
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      CidrBlock:
+        Fn::ImportValue: !Sub "${NetworkStack}::PublicNetworkCidr"
+      Egress: true
+      NetworkAclId: !Ref DataNacl
+      PortRange:
+        From: -1
+        To: -1
+      Protocol: -1
+      RuleAction: "deny"
+      RuleNumber: 1000
+
+  DataNaclIn3000:
+    # Allow traffic from anywhere
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      CidrBlock: "0.0.0.0/0"
+      Egress: false
+      NetworkAclId: !Ref DataNacl
+      PortRange:
+        From: -1
+        To: -1
+      Protocol: -1
+      RuleAction: "allow"
+      RuleNumber: 3000
+
+  DataNaclOut3000:
+    # Allow traffic to anywhere
+    Type: "AWS::EC2::NetworkAclEntry"
+    Properties:
+      CidrBlock: "0.0.0.0/0"
+      Egress: true
+      NetworkAclId: !Ref DataNacl
+      PortRange:
+        From: -1
+        To: -1
+      Protocol: -1
+      RuleAction: "allow"
+      RuleNumber: 3000

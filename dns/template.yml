@@ -1,0 +1,48 @@
+---
+Description: Route53 Private Hosted Zones for Environment Accounts
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  Environment:
+    Description: Name of the environment being deployed
+    Type: String
+    AllowedValues:
+      - dev
+      - prod
+
+  NetworkStack:
+    Type: String
+    Description: Name of the network stack in this environment
+    AllowedPattern: "[A-Za-z][A-Za-z0-9-]{0,127}"
+
+  HostedZoneName:
+    Type: String
+    Description: Name of the hosted zone
+    Default: JoeTest.myob
+
+Resources:
+  #############################################################################
+  # Route53 Private Hosted Zone
+  #############################################################################
+  DNS:
+    Type: AWS::Route53::HostedZone
+    Properties:
+      HostedZoneConfig:
+        Comment: !Sub "${Environment}'s Private Hosted Zone."
+      Name: !Sub "${Environment}.${HostedZoneName}"
+      VPCs:
+        -
+          VPCId:
+            Fn::ImportValue: !Sub "${NetworkStack}::VpcId"
+          VPCRegion: !Ref AWS::Region
+      HostedZoneTags:
+        -
+          Key: "Name"
+          Value: !Sub "${Environment} Hosted Zone"
+
+Outputs:
+  HostedZoneId:
+    Value: !Ref 'DNS'
+    Description: The hosted zone id
+    Export:
+      Name: !Sub "${AWS::StackName}::HostedZoneId"

@@ -1,0 +1,10 @@
+---
+AzCount: "3"
+RegionCidr: 10.128.4.0/22
+VpcCidr: 10.128.4.0/22
+PublicNetworkCidr: 10.128.4.0/24
+PrivateNetworkCidr: 10.128.6.0/23
+DataNetworkCidr: 10.128.5.0/24
+PublicSubnetCidrs: 10.128.4.0/26,10.128.4.64/26,10.128.4.128/26,10.128.4.192/26
+PrivateSubnetCidrs: 10.128.6.0/25,10.128.6.128/25,10.128.6.0/25,10.128.6.128/25
+DataSubnetCidrs: 10.128.5.0/26,10.128.5.64/26,10.128.5.128/26,10.128.5.192/26

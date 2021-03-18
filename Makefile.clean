@@ -1,0 +1,58 @@
+SHELL := /bin/bash
+CLEAN_TARGETS := clean-securitygroups-subscriptions clean-securitygroups clean-dns \
+	clean-peering clean-routing clean-nacls clean-vpn clean-network
+
+.PHONY: env-vars $(CLEAN_TARGETS)
+
+all-clean: $(CLEAN_TARGETS)
+
+clean-securitygroups-subscriptions: env-vars
+	@echo "--- Destroy $(ENVIRONMENT)-securitygroups-subscriptions-$(AWS_DEFAULT_REGION) cloudformation stack"
+	@docker-compose run --rm stackup $(ENVIRONMENT)-securitygroups-subscriptions-$(AWS_DEFAULT_REGION) down --region us-east-1
+
+	@echo "--- Unsubscribe $(ENVIRONMENT)-securitygroups-subscriptions stack subscriptions"
+	$(eval export APIS_FUNCTION_ARN=$(shell docker-compose run -T --rm stackup $(ENVIRONMENT)-securitygroups outputs | jq -r '.APIsFunctionArn'))
+	$(eval export CLOUDFRONT_FUNCTION_ARN=$(shell docker-compose run -T --rm stackup $(ENVIRONMENT)-securitygroups outputs | jq -r '.CloudFrontFunctionArn'))
+	$(eval export ROUTE53_HEALTHCHECKS_FUNCTION_ARN=$(shell docker-compose run -T --rm stackup $(ENVIRONMENT)-securitygroups outputs | jq -r '.Route53HealthChecksFunctionArn'))
+
+	@FUNCTION_ARN=$(APIS_FUNCTION_ARN) AWS_DEFAULT_REGION=us-east-1 \
+		docker-compose run --rm python scripts/unsubscribe_sns_topic.py
+
+	@FUNCTION_ARN=$(CLOUDFRONT_FUNCTION_ARN) AWS_DEFAULT_REGION=us-east-1 \
+		docker-compose run --rm python scripts/unsubscribe_sns_topic.py
+
+	@FUNCTION_ARN=$(ROUTE53_HEALTHCHECKS_FUNCTION_ARN) AWS_DEFAULT_REGION=us-east-1 \
+		docker-compose run --rm python scripts/unsubscribe_sns_topic.py
+
+clean-securitygroups: env-vars clean-securitygroups-subscriptions
+	@echo "--- Destroy $(ENVIRONMENT)-securitygroups cloudformation stack"
+	@docker-compose run --rm stackup $(ENVIRONMENT)-securitygroups down
+
+clean-dns: env-vars
+	@echo "--- Destroy $(ENVIRONMENT)-dns cloudformation stack"
+	@docker-compose run --rm stackup $(ENVIRONMENT)-dns down
+
+clean-peering: env-vars
+	@echo "--- Destroy $(ENVIRONMENT)-peering cloudformation stack"
+	@docker-compose run --rm stackup $(ENVIRONMENT)-peering down
+
+clean-vpn: env-vars
+	@echo "--- Destroy $(ENVIRONMENT)-vpn cloudformation stack"
+	@docker-compose run --rm stackup $(ENVIRONMENT)-vpn down
+
+clean-routing: env-vars clean-peering clean-vpn
+	@echo "--- Destroy $(ENVIRONMENT)-routing cloudformation stack"
+	@docker-compose run --rm stackup $(ENVIRONMENT)-routing down
+
+clean-nacls: env-vars clean-routing
+	@echo "--- Destroy $(ENVIRONMENT)-nacls cloudformation stack"
+	@docker-compose run --rm stackup $(ENVIRONMENT)-nacls down
+
+clean-network: env-vars clean-nacls
+	@echo "--- Destroy $(ENVIRONMENT)-network cloudformation stack"
+	@docker-compose run --rm stackup $(ENVIRONMENT)-network down
+
+env-vars:
+ifndef ENVIRONMENT
+	$(error ENVIRONMENT is undefined)
+endif

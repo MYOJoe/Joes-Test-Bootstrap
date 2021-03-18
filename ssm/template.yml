@@ -1,0 +1,380 @@
+---
+Description: SSM Configuration
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+
+  Environment:
+    Description: Name of the environment being deployed
+    Type: String
+    AllowedValues:
+      - dev
+      - prod
+
+  InventoryCollectionRate:
+    Description: CronJob for Inventory Collection
+    Type: String
+    Default: cron(0 0 */8 * * ? *)
+
+  SSMAgentUpdateRate:
+    Description: Cron Job to Update SSM Agent
+    Type: String
+    Default: cron(0 0 20 ? * * *)
+
+  MaintenanceWindowRate:
+    Description: Cron Job used to determine when a maintenace window is opened.
+    Type: String
+    Default: cron(0 0 21 ? * * *)
+
+  BucketPrefix:
+    Description: Prefix to use for SSMS3 Buckets
+    Type: String
+    AllowedPattern: '[a-z0-9](?:[a-z0-9]|(?<!\.)[\.-](?!\.)){1,61}[a-z0-9]'
+    Default: myob-digitalex-lab-test-admin
+
+Resources:
+
+  #############################################################################
+  # S3 Bucket for SSM
+  #############################################################################
+
+  SSMDocumentBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    Properties:
+      BucketName: !Sub "${BucketPrefix}-${Environment}-${AWS::AccountId}-ssm-documents"
+      VersioningConfiguration:
+        Status: Enabled
+
+  #############################################################################
+  # SSM Bucket Policy
+  #############################################################################
+
+  SSMDocumentBuckettPolicy:
+    Type: AWS::S3::BucketPolicy
+    DeletionPolicy: Retain
+    Properties:
+      Bucket: !Ref SSMDocumentBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          # SSM Document Retieval
+          - Effect: "Allow"
+            Principal:
+              Service: "ssm.amazonaws.com"
+            Action:
+              - "s3:GetObject"
+            Resource:
+              - !Sub "arn:aws:s3:::${BucketPrefix}-${Environment}-${AWS::AccountId}-ssm-documents/*"
+          # SSM List Bucket Contents & ACL
+          - Effect: "Allow"
+            Principal:
+              Service: "ssm.amazonaws.com"
+            Action:
+              - "s3:GetBucketAcl"
+              - "s3:ListBucket"
+            Resource: !GetAtt 'SSMDocumentBucket.Arn'
+          - Effect: "Allow"
+            Principal:
+              AWS: !Sub ${AWS::AccountId}
+            Action:
+              - "s3:PutObject"
+              - "s3:PutObjectAcl"
+            Resource:
+              - !Sub "arn:aws:s3:::${BucketPrefix}-${Environment}-${AWS::AccountId}-ssm-documents/*"
+
+  #############################################################################
+  # IAM Roles for SSM to Operate
+  #############################################################################
+  ## Patch Execuition Roles (Used to scan for patches on EC2 Instances)
+
+  SSMPatchExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: "ssm-patch-execution"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "ssm.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+
+  SSMPatchExecutionPolicy:
+    Type: AWS::IAM::Policy
+    Properties:
+      PolicyName: "ssm-patch-execution-policy"
+      Roles:
+        - !Ref SSMPatchExecutionRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - "ssm:GetAutomationExecution"
+              - "ssm:GetParameters"
+              - "ssm:ListCommands"
+              - "ssm:StartAutomationExecution"
+              - "ssm:ListAssociations"
+              - "ssm:GetDeployablePatchSnapshotForInstance"
+              - "ssm:ListCommandInvocation"
+              - "ssm:GetCommandInvocation"
+              - "ssm:CancelCommand"
+              - "ssm:SendCommand"
+            Effect: "Allow"
+            Resource:
+              - "*"
+          - Action:
+              - "ssm:GetParameters"
+            Effect: "Allow"
+            Resource:
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter:*"
+          - Action:
+              - "states:DescribeExecution"
+              - "states:StartExecution"
+            Effect: "Allow"
+            Resource:
+              - !Sub "arn:aws:states:${AWS::Region}:${AWS::AccountId}:*"
+          - Action:
+              - "ec2:DescribeInstanceAttribute"
+              - "ec2:DescribeInstanceStatus"
+              - "ec2:DescribeInstances"
+            Effect: "Allow"
+            Resource:
+              - !Sub "arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+          - Action:
+              - "tag:GetResources"
+            Effect: "Allow"
+            Resource:
+              - '*'
+
+  ## EC2 SSM Role (Allows SSM To manage and control an instance)
+  EC2ForSSMRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: "systems-manager-access-role"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service:
+                - "ssm.amazonaws.com"
+                - "ec2.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+
+  EC2ForSSMInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: "systems-manager-access-instance-profile"
+      Roles:
+        - !Ref EC2ForSSMRole
+
+  EC2ForSSMPol:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: "systems-manager-access-policy"
+      Roles:
+        - !Ref EC2ForSSMRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Action:
+              - "ssm:DescribeAssociation"
+              - "ssm:GetDeployablePatchSnapshotForInstance"
+              - "ssm:GetManifest"
+              - "ssm:ListInstanceAssociations"
+              - "ssm:PutInventory"
+              - "ssm:PutComplianceItems"
+              - "ssm:PutConfigurePackageResult"
+              - "ssm:UpdateAssociationStatus"
+              - "ssm:UpdateInstanceAssociationStatus"
+              - "ssm:UpdateInstanceInformation"
+              - "ssm:ListAssociations"
+            Effect: "Allow"
+            Resource:
+              - '*'
+          - Action:
+              - "ssm:GetParameters"
+            Effect: "Allow"
+            Resource:
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter/*"
+          - Action:
+              - "ssm:GetDocument"
+              - "ssm:DescribeDocument"
+              - "ssm:DescribeAssociation"
+            Resource:
+              - !Sub "arn:aws:ssm:${AWS::Region}::document/*"
+              - !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:document/*"
+            Effect: "Allow"
+          - Action:
+              - "ec2messages:AcknowledgeMessage"
+              - "ec2messages:DeleteMessage"
+              - "ec2messages:FailMessage"
+              - "ec2messages:GetEndpoint"
+              - "ec2messages:GetMessages"
+              - "ec2messages:SendReply"
+            Effect: "Allow"
+            Resource:
+              - "*"
+          - Action:
+              - "cloudwatch:PutMetricData"
+            Effect: "Allow"
+            Resource:
+              - !Sub "arn:aws:events:${AWS::Region}:${AWS::AccountId}:*"
+          - Action:
+              - "ec2:DescribeInstanceStatus"
+              - "ec2:DescribeInsatnceAttribute"
+              - "ec2:DescribeInstances"
+            Effect: "Allow"
+            Resource:
+              - !Sub "arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"
+          - Action:
+              - "logs:CreateLogGroup"
+              - "logs:CreateLogStream"
+              - "logs:DescribeLogGroups"
+              - "logs:DescribeLogStreams"
+              - "logs:PutLogEvents"
+            Effect: "Allow"
+            Resource:
+              - !Sub "arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/ssm/*"
+          - Action:
+              - "s3:GetObject"
+            Effect: "Allow"
+            Resource:
+              - !Sub "arn:aws:s3:::aws-ssm-${AWS::Region}/*"
+              - !Sub "arn:aws:s3:::aws-windows-downloads-${AWS::Region}/*"
+              - !Sub "arn:aws:s3:::amazon-ssm-${AWS::Region}/*"
+              - !Sub "arn:aws:s3:::amazon-ssm-packages-${AWS::Region}/*"
+              - !Sub "arn:aws:s3:::${AWS::Region}-birdwatcher-prod/*"
+              - !Sub "arn:aws:s3:::patch-baseline-snapshot-${AWS::Region}/*"
+              - !Sub "arn:aws:s3:::${BucketPrefix}-${Environment}-${AWS::AccountId}-ssm-documents/*"
+          - Action:
+              - "s3:ListBucket"
+            Effect: "Allow"
+            Resource:
+              - !Sub "arn:aws:s3:::${BucketPrefix}-${Environment}-${AWS::AccountId}-ssm-documents"
+          - Effect: Allow
+            Action:
+              - ssmmessages:CreateControlChannel
+              - ssmmessages:CreateDataChannel
+              - ssmmessages:OpenControlChannel
+              - ssmmessages:OpenDataChannel
+            Resource: "*"
+          - Effect: Allow
+            Action:
+              - ec2messages:AcknowledgeMessage
+              - ec2messages:DeleteMessage
+              - ec2messages:FailMessage
+              - ec2messages:GetEndpoint
+              - ec2messages:GetMessages
+              - ec2messages:SendReply
+            Resource: "*"
+          - Action:
+              - "logs:CreateLogGroup"
+            Effect: "Allow"
+            Resource:
+              - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group
+              - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*
+          - Action:
+              - "logs:CreateLogStream"
+              - "logs:PutLogEvents"
+            Effect: "Allow"
+            Resource:
+              - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*
+              - !Sub arn:aws:logs:${AWS::Region}:${AWS::AccountId}:log-group:*:*
+          - Effect: Allow
+            Action:
+              - "cloudwatch:PutMetricData"
+            Resource: "*"
+
+  #############################################################################
+  # Inventory Collection - Collect inventory on all instances
+  #############################################################################
+
+  SSMInventoryCollection:
+    Type: AWS::SSM::Association
+    Properties:
+      AssociationName: !Sub "${AWS::AccountId}-inventory-collection"
+      Name: "AWS-GatherSoftwareInventory"
+      ScheduleExpression: !Ref InventoryCollectionRate
+      Targets:
+        - Key: InstanceIds
+          Values: ['*']
+
+  #############################################################################
+  # Maintenance Window - Window To scan for patches
+  #############################################################################
+
+  MaintenanceWindow:
+    Type: AWS::SSM::MaintenanceWindow
+    Properties:
+      Description: Maintenace Window from 9:00pm every night for 2 hours
+      AllowUnassociatedTargets: false
+      Cutoff: 1
+      Schedule: !Ref MaintenanceWindowRate
+      Duration: 2
+      Name: !Sub "${AWS::AccountId}-maintenance-window"
+      ScheduleTimezone: "Australia/Melbourne"
+
+  #############################################################################
+  # Task to Scan for patch updates
+  #############################################################################
+
+  MaintenanceWindowTask:
+    Type: AWS::SSM::MaintenanceWindowTask
+    Properties:
+      Description: Runs Basic patch baseline
+      ServiceRoleArn: !GetAtt SSMPatchExecutionRole.Arn
+      MaxErrors: "1"
+      TaskArn: AWS-RunPatchBaseline
+      MaxConcurrency: 100%
+      WindowId: !Ref MaintenanceWindow
+      Priority: 1
+      TaskType: RUN_COMMAND
+      TaskInvocationParameters:
+        MaintenanceWindowRunCommandParameters:
+          Comment: Scan for patch baselines
+          TimeoutSeconds: 600
+          Parameters: {"Operation":["Scan"]}
+      Targets:
+        - Values:
+            - !Ref MaintenanceWindowTarget
+          Key: WindowTargetIds
+
+  #############################################################################
+  # Task to Scan for patch updates
+  #############################################################################
+
+  MaintenanceWindowTarget:
+    Type: AWS::SSM::MaintenanceWindowTarget
+    Properties:
+      Description: Targets for the Maintenance Window for Patch Management of Instances
+      WindowId: !Ref MaintenanceWindow
+      ResourceType: INSTANCE
+      Targets:
+        - Key: tag:patch-scan
+          Values: ['y']
+
+  #############################################################################
+  # SSM Document to Keep SSM Agent Updated
+  #############################################################################
+
+  SSMAgentUpdate:
+    Type: AWS::SSM::Association
+    Properties:
+      AssociationName: !Sub "${AWS::AccountId}-ssm-agent-update"
+      Name: "AWS-UpdateSSMAgent"
+      ScheduleExpression: !Ref SSMAgentUpdateRate
+      Targets:
+        - Key: InstanceIds
+          Values: ['*']
+
+Outputs:
+  HostedZoneId:
+    Value: !Ref 'EC2ForSSMPol'
+    Description: The hosted zone id
+    Export:
+      Name: !Sub "${AWS::StackName}::SSMManagedPolicy"

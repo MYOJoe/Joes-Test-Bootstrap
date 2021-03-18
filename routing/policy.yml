@@ -1,0 +1,16 @@
+---
+Statement:
+  - Effect: Deny
+    Action: "Update:*"
+    Principal: "*"
+    Resource: "*"
+    Condition:
+      StringEquals:
+        ResourceType:
+          - "AWS::EC2::EIP"
+          - "AWS::EC2::NatGateway"
+          - "AWS::EC2::InternetGateway"
+  - Effect: Allow
+    Action: "Update:*"
+    Principal: "*"
+    Resource: "*"

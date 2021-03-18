@@ -1,0 +1,41 @@
+---
+Description: Subscriptions for Security Groups
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+  CloudFrontFunctionArn:
+    Type: String
+    AllowedPattern: '^arn:aws:lambda:[a-z]{2}-[a-z]+-\d:\d{12}:function:[^:]+$'
+
+  APIsFunctionArn:
+    Type: String
+    AllowedPattern: '^arn:aws:lambda:[a-z]{2}-[a-z]+-\d:\d{12}:function:[^:]+$'
+
+  Route53HealthChecksFunctionArn:
+    Type: String
+    AllowedPattern: '^arn:aws:lambda:[a-z]{2}-[a-z]+-\d:\d{12}:function:[^:]+$'
+
+Resources:
+  APIsSNSSubscription:
+    Type: "AWS::SNS::Subscription"
+    DeletionPolicy: Retain
+    Properties:
+      Endpoint: !Ref APIsFunctionArn
+      Protocol: lambda
+      TopicArn: arn:aws:sns:us-east-1:806199016981:AmazonIpSpaceChanged
+
+  CloudFrontSNSSubscription:
+    Type: "AWS::SNS::Subscription"
+    DeletionPolicy: Retain
+    Properties:
+      Endpoint: !Ref CloudFrontFunctionArn
+      Protocol: lambda
+      TopicArn: arn:aws:sns:us-east-1:806199016981:AmazonIpSpaceChanged
+
+  Route53HealthChecksSNSSubscription:
+    Type: "AWS::SNS::Subscription"
+    DeletionPolicy: Retain
+    Properties:
+      Endpoint: !Ref Route53HealthChecksFunctionArn
+      Protocol: lambda
+      TopicArn: arn:aws:sns:us-east-1:806199016981:AmazonIpSpaceChanged

@@ -1,0 +1,107 @@
+SHELL := /bin/bash -e
+
+DEPLOY_TARGETS := deploy-network deploy-nacls deploy-routing deploy-dns \
+	deploy-securitygroups deploy-securitygroups-subscriptions deploy-ssm \
+	deploy-av deploy-ami-clean deploy-ebs-encrypt deploy-iam-packer \
+	deploy-kms
+
+.PHONY: env-vars az-count $(DEPLOY_TARGETS)
+
+all-deploy: $(DEPLOY_TARGETS)
+
+deploy-kms: env-vars
+	@echo "--- Deploy $(ENVIRONMENT)-kms cloudformation stack"
+	@docker-compose run --rm stackup $(ENVIRONMENT)-kms up \
+		--template kms/template.yml \
+		--override Environment=$(ENVIRONMENT)
+
+deploy-scheduler: env-vars
+	@echo "--- Deploy $(ENVIRONMENT)-scheduler cloudformation stack"
+	@docker-compose run --rm stackup $(ENVIRONMENT)-scheduler up \
+		--template scheduler/template.yml \
+		--override Environment=$(ENVIRONMENT)
+
+deploy-iam-packer: env-vars
+	@echo "--- Deploy $(ENVIRONMENT)-iam cloudformation stack"
+	@docker-compose run --rm stackup $(ENVIRONMENT)-iam up \
+		--template iam/packer/template.yml \
+		--override Environment=$(ENVIRONMENT) \
+		--override SSMStack=$(ENVIRONMENT)-ssm
+
+deploy-iam-pipeline: env-vars
+	@echo "--- Deploy $(ENVIRONMENT)-iam-pipeline cloudformation stack"
+	@docker-compose run --rm stackup $(ENVIRONMENT)-iam-pipeline up \
+		--template iam/pipeline/template.yml \
+		--override Environment=$(ENVIRONMENT)
+
+deploy-network: env-vars
+	@echo "--- Deploy $(ENVIRONMENT)-network cloudformation stack"
+	@docker-compose run --rm stackup $(ENVIRONMENT)-network up \
+		--policy network/policy.yml \
+		--template network/template.yml \
+		--parameters network/parameters/$(AWS_DEFAULT_REGION)/$(ENVIRONMENT).yml \
+		--override Environment=$(ENVIRONMENT)
+
+deploy-nacls: env-vars az-count deploy-network
+	@echo "--- Deploy $(ENVIRONMENT)-nacls cloudformation stack"
+	@docker-compose run --rm stackup $(ENVIRONMENT)-nacls up \
+		--policy nacls/policy.yml \
+		--template nacls/template.yml \
+		--override Environment=$(ENVIRONMENT) \
+		--override NetworkStack=$(ENVIRONMENT)-network \
+		--override AzCount=$(AZ_COUNT)
+
+deploy-routing: env-vars az-count deploy-network
+	@echo "--- Deploy $(ENVIRONMENT)-routing cloudformation stack"
+	@docker-compose run --rm stackup $(ENVIRONMENT)-routing up \
+		--policy routing/policy.yml \
+		--template routing/template.yml \
+		--override Environment=$(ENVIRONMENT) \
+		--override NetworkStack=$(ENVIRONMENT)-network \
+		--override AzCount=$(AZ_COUNT)
+
+deploy-dns: env-vars
+	@echo "--- Deploy $(ENVIRONMENT)-dns cloudformation stack"
+	@docker-compose run --rm stackup $(ENVIRONMENT)-dns up \
+		--policy dns/policy.yml \
+		--template dns/template.yml \
+		--override Environment=$(ENVIRONMENT) \
+		--override NetworkStack=$(ENVIRONMENT)-network \
+		--override HostedZoneName=dx-lab-dev.myob
+
+deploy-securitygroups: env-vars az-count deploy-network
+	@echo "--- Deploy $(ENVIRONMENT)-securitygroups cloudformation stack"
+	@docker-compose run --rm stackup $(ENVIRONMENT)-securitygroups up \
+		--template securitygroups/template.yml \
+		--override Environment=$(ENVIRONMENT) \
+		--override NetworkStack=$(ENVIRONMENT)-network
+
+deploy-ssm: env-vars deploy-ssm
+	@echo "--- Deploy $(ENVIRONMENT)-ssm cloudformation stack"
+	@docker-compose run --rm stackup $(ENVIRONMENT)-ssm up \
+		--template ssm/template.yml \
+		--override Environment=$(ENVIRONMENT)
+
+deploy-ami-clean: env-vars
+	@echo "--- Deploy $(ENVIRONMENT)-ami-clean cloudformation stack"
+	@docker-compose run --rm stackup $(ENVIRONMENT)-ami-clean up \
+		--template ami-clean/template.yml \
+		--override Environment=$(ENVIRONMENT)
+
+deploy-ebs-encrypt: env-vars
+	@echo "--- Deploy $(ENVIRONMENT)-ebs-encrypt cloudformation stack"
+	@docker-compose run --rm stackup $(ENVIRONMENT)-ebs-encrypt up \
+		--template ebs-encrypt/template.yml \
+		--override Environment=$(ENVIRONMENT)
+
+az-count: env-vars deploy-network
+	@echo "Query the AzCount"
+	$(eval export AZ_COUNT=$(shell docker-compose run -T --rm stackup $(ENVIRONMENT)-network outputs | jq -r '.AzCount'))
+
+env-vars:
+ifndef ENVIRONMENT
+	$(error ENVIRONMENT is undefined)
+endif
+ifndef AWS_DEFAULT_REGION
+	$(error AWS_DEFAULT_REGION is undefined)
+endif

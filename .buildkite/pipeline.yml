@@ -1,0 +1,46 @@
+---
+env:
+  AWS_DEFAULT_REGION: ap-southeast-2
+
+steps:
+  #############################################################################
+  # Test
+  #############################################################################
+
+  - label: ":spiral_note_pad: Test"
+    command:
+      - make test
+    env:
+      ENVIRONMENT: dev
+    agents:
+      queue: digitalex-test-lab
+
+  #############################################################################
+  # Deploy Dev
+  #############################################################################
+
+  - wait
+  - label: ":cloudformation: :rocket: Bootstrap Dev Environment"
+    command:
+      - make deploy
+    env:
+      ENVIRONMENT: dev
+      PRIVILEGED_ROLE: true
+    agents:
+      queue: digitalex-test-lab
+
+  #############################################################################
+  # Deploy Prod
+  #############################################################################
+
+  # - block: ":woman-shrugging: Deploy Prod"
+  #   branches: master
+  # - label: ":cloudformation: :rocket: Bootstrap Prod Environment"
+  #   branches: master
+  #   command:
+  #     - make deploy
+  #   env:
+  #     ENVIRONMENT: prod
+  #     PRIVILEGED_ROLE: true
+  #   agents:
+  #     queue: digitalex-test-lab

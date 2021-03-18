@@ -1,0 +1,101 @@
+---
+Description: IAM Roles for Packer Builder
+AWSTemplateFormatVersion: "2010-09-09"
+
+Parameters:
+
+  Environment:
+    Description: Name of the environment being deployed
+    Type: String
+    AllowedValues:
+      - dev
+      - prod
+
+  DevAccountId:
+    Description: AccountId of Prod Environment
+    Type: String
+    AllowedPattern: '[a-z0-9](?:[a-z0-9]|(?<!\.)[\.-](?!\.)){1,61}[a-z0-9]'
+    Default: "696822041448"
+
+  BucketPrefix:
+    Description: Prefix to use for Artefacts S3 Bucket
+    Type: String
+    AllowedPattern: '[a-z0-9](?:[a-z0-9]|(?<!\.)[\.-](?!\.)){1,61}[a-z0-9]'
+    Default: myob-digitalex-lab
+
+  SSMStack:
+    Description: Name of the SSM Stack
+    Type: String
+    AllowedPattern: '[a-z0-9](?:[a-z0-9]|(?<!\.)[\.-](?!\.)){1,61}[a-z0-9]'
+
+Resources:
+
+  #############################################################################
+  # Packer Role
+  #############################################################################
+
+  PackerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub "myob-packer-role"
+      ManagedPolicyArns:
+        - Fn::ImportValue: !Sub "${SSMStack}::SSMManagedPolicy"
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: "Allow"
+            Principal:
+              Service: "ec2.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+
+  PackerPolicy:
+    Type: AWS::IAM::ManagedPolicy
+    Properties:
+      ManagedPolicyName: !Sub myob-packer-managedpolicy
+      Roles:
+        - !Ref PackerRole
+      PolicyDocument:
+        Version: 2012-10-17
+        Statement:
+          - Effect: Allow
+            Action:
+              - s3:GetObject
+              - s3:ListMultipartUploadParts
+            Resource:
+              Fn::Join:
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref BucketPrefix
+                  - '-'
+                  - !Ref DevAccountId
+                  - '-'
+                  - 'artefacts-bucket'
+                  - '/*'
+          - Effect: Allow
+            Action:
+              - s3:GetBucketAcl
+              - s3:ListBucket
+            Resource:
+              Fn::Join:
+                - ''
+                - - 'arn:aws:s3:::'
+                  - !Ref BucketPrefix
+                  - '-'
+                  - !Ref DevAccountId
+                  - '-'
+                  - 'artefacts-bucket'
+
+  PackerRoleInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      InstanceProfileName: !Sub "myob-packer-instanceprofile"
+      Roles:
+        - !Ref PackerRole
+
+Outputs:
+  PackerRoleName:
+    Description: The Name of the Packer Role
+    Value: !Ref PackerRole
+    Export:
+      Name: !Sub "${AWS::StackName}::PackerRoleName"
